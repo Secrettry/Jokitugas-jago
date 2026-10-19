@@ -192,11 +192,11 @@ legend{padding:0;font-size:13px;font-weight:700;margin-bottom:6px}
       <canvas id="cv" width="1080" height="1920" role="img" aria-label="Hasil testimoni di dalam template"></canvas>
     </div>
     <div class="actions">
-      <button type="button" class="btn btn-primary" id="save1" disabled>Simpan gambar</button>
-      <button type="button" class="btn" id="saveAll" disabled hidden>Simpan semua (ZIP)</button>
+      <button type="button" class="btn btn-primary" id="save1" disabled>Simpan sebagai JPG</button>
+      <button type="button" class="btn" id="saveAll" disabled hidden>Simpan semua (JPG)</button>
     </div>
     <p class="status" id="status" role="status" aria-live="polite"></p>
-    <p class="note" id="nodl" hidden></p>
+    <p class="note" id="nodl" hidden>Tombol simpan tidak tersedia di tampilan ini. Buka halaman lewat Claude agar tombol simpan aktif.</p>
     <p class="meta" id="meta"></p>
   </section>
 
@@ -234,7 +234,6 @@ legend{padding:0;font-size:13px;font-weight:700;margin-bottom:6px}
   </section>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (function(){
   "use strict";
@@ -497,7 +496,7 @@ legend{padding:0;font-size:13px;font-weight:700;margin-bottom:6px}
     $("saveAll").disabled = !dl || busy;
   }
   function toBlob(canvas){
-    return new Promise(function(res, rej){ canvas.toBlob(function(b){ b ? res(b) : rej(new Error("Gagal membuat PNG")); }, "image/png"); });
+    return new Promise(function(res, rej){ canvas.toBlob(function(b){ b ? res(b) : rej(new Error("Gagal membuat JPG")); }, "image/jpeg", 0.95); });
   }
   function baseName(it, i){
     var b = String(it.name || "").replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 36);
@@ -516,29 +515,30 @@ legend{padding:0;font-size:13px;font-weight:700;margin-bottom:6px}
     busy = true; updateButtons();
     try {
       var blob = await toBlob(cv);
-      var r = await dl.save({ filename: baseName(it, S.sel) + ".png", data: blob });
-      say(r && r.status === "saved" ? "Gambar tersimpan." : "Gambar dikirim.");
+      var r = await dl.save({ filename: baseName(it, S.sel) + ".jpg", data: blob });
+      say(r && r.status === "saved" ? "Gambar JPG tersimpan." : "Gambar dikirim.");
     } catch (e) { fail(e); }
     busy = false; updateButtons();
   });
   $("saveAll").addEventListener("click", async function(){
     if (!dl || !S.items.length) return;
-    if (typeof JSZip === "undefined") { say("Fitur ZIP belum termuat. Muat ulang halaman atau simpan satu per satu."); return; }
     busy = true; updateButtons();
+    var used = {}, off = document.createElement("canvas"), done = 0;
     try {
-      var zip = new JSZip(), off = document.createElement("canvas"), used = {};
       for (var i = 0; i < S.items.length; i++) {
-        say("Menyiapkan " + (i + 1) + " dari " + S.items.length + "...");
+        say("Menyimpan " + (i + 1) + " dari " + S.items.length + "...");
         var it = S.items[i];
         render(off, it.bmp);
         var name = baseName(it, i), n = used[name] = (used[name] || 0) + 1;
-        zip.file(name + (n > 1 ? "-" + n : "") + ".png", await toBlob(off));
-        await new Promise(function(r){ setTimeout(r, 0); });
+        await dl.save({ filename: name + (n > 1 ? "-" + n : "") + ".jpg", data: await toBlob(off) });
+        done++;
+        await new Promise(function(r){ setTimeout(r, 450); });
       }
-      var zb = await zip.generateAsync({ type: "blob", compression: "STORE" });
-      var r = await dl.save({ filename: "testimoni-" + stamp() + ".zip", data: zb });
-      say(r && r.status === "saved" ? "ZIP tersimpan (" + S.items.length + " gambar)." : "ZIP dikirim.");
-    } catch (e) { fail(e); }
+      say(done + " gambar JPG tersimpan.");
+    } catch (e) {
+      if (e && e.code === "declined") say("Dibatalkan setelah " + done + " dari " + S.items.length + " gambar tersimpan.");
+      else fail(e);
+    }
     busy = false; updateButtons();
   });
 
